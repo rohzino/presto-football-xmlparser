@@ -16,7 +16,7 @@ This program takes a PrestoStats/StatCrew XML file and parses it to get specific
 
 ## Instructions for use
 Run the program in PowerShell or Command Prompt.
-`py prestoSyncLiveText.py`
+- `py prestoSyncLiveText.py`
 
 First, point the program to your Presto XML file path, this can be a local file directly from PrestoSync, or it can be pulled from the web if you have stat partners set up. 
 - You **must** specify a filename at the end of the filepath, otherwise the program will fail to function.
