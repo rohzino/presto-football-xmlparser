@@ -1,19 +1,19 @@
 import os
-import ctypes
 import time
 import requests
 from lxml import etree
+import ctypes
 
 # Enable ANSI escape sequences in Windows PowerShell
 def enable_virtual_terminal_processing():
-    if os.name == 'nt': 
+    if os.name == 'nt':  # If we're on Windows
         kernel32 = ctypes.windll.kernel32
         handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
         mode = ctypes.c_ulong()
         kernel32.GetConsoleMode(handle, ctypes.byref(mode))
         kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
 
-# Call this function at the start
+# Enable ANSI escape sequences
 enable_virtual_terminal_processing()
 
 # ANSI color codes
@@ -42,170 +42,167 @@ def load_xml(source):
         print(f"{YELLOW}Error loading XML: {e}{RESET}")
     return None
 
-# Function to list teams and allow the user to select a team
-def list_teams(tree):
+# Function to select a team based on user input and vh (Home/Visitor) attribute
+def select_team(tree):
     teams = tree.xpath("//team")
     team_dict = {}
     print(f"{CYAN}Teams Available:{RESET}")
+    
+    # Map teams based on their name and vh (Home or Visitor)
     for team in teams:
-        team_name = team.attrib['name']
-        print(f"- {CYAN}{team_name}{RESET}")
-        team_dict[team_name.lower()] = team
+        team_name = team.attrib.get('name')
+        vh = team.attrib.get('vh').upper()  # Capitalize the abbreviation
+        if team_name:  # Only add teams with a valid name
+            team_key = f"{team_name} ({vh})"  # Capitalize each word in team_name and abbreviation
+            print(f"- {CYAN}{team_key}{RESET}")
+            team_dict[(team_name.lower(), vh)] = team
+    
+    while True:
+        team_input = input(f"{CYAN}Enter the team name (or part of it) to select the team: {RESET}").lower()
 
-    return team_dict
+        matched_teams = []
+        for (team_name, vh), team_element in team_dict.items():
+            if team_input in team_name:  # Partial match for team name
+                matched_teams.append((team_name, team_element))
+
+        if len(matched_teams) == 1:
+            selected_team_name, selected_team = matched_teams[0]
+            print(f"Selected Team: {selected_team_name.title()} ({'Home' if selected_team.attrib.get('vh') == 'H' else 'Visitor'})")  # Confirm selected team
+            return selected_team_name, selected_team  # Return the selected team name and element
+        elif len(matched_teams) > 1:
+            print("Multiple teams matched your input. Please be more specific.")
+            # Optionally, display the matched teams for the user
+            for team_name, team in matched_teams:
+                print(f"- {team_name.title()} ({'Home' if team.attrib.get('vh') == 'H' else 'Visitor'})")
+        else:
+            print(f"{YELLOW}No team matched your input. Please try again.{RESET}")
 
 # Function to list players from a selected team and allow the user to select a player
-def list_players_by_team(team_element):
+def list_players_by_team(team_name, team_element):
     players = {}
-    team_name = team_element.attrib['name']
-    print(f"\n{CYAN}Players in Team: {team_name}{RESET}")
-    for player in team_element.xpath(".//player"):
-        uniform = player.attrib['uni']
-        name = player.attrib['name']
+    
+    print(f"\n{CYAN}Players in Team: {team_name.title()}{RESET}")
+    
+    # Ensure we're selecting players within the specific team element
+    for player in team_element.xpath("./player"):  # Use `./player` to select only players within the team element
+        uniform = player.attrib.get('uni', 'Unknown')  # Handle missing 'uni' attribute
+        name = player.attrib.get('name', 'Unknown Player')  # Handle missing 'name' attribute
         print(f"  {WHITE}{uniform}: {name}{RESET}")
         players[f"{uniform} {name}"] = player
 
     return players
 
-# Function to get the player's passing stats using the generated XPath
-def get_passing_stats(player_element):
-    pass_stats = player_element.xpath(".//pass")
-    if pass_stats:
-        pass_element = pass_stats[0]
-        att = pass_element.attrib.get("att", "N/A")
-        comp = pass_element.attrib.get("comp", "N/A")
-        yds = pass_element.attrib.get("yds", "N/A")
-        td = pass_element.attrib.get("td", "N/A")
-        int_ = pass_element.attrib.get("int", "N/A")
-
-        return {
-            "attempts": att,
-            "completions": comp,
-            "yards": yds,
-            "touchdowns": td,
-            "interceptions": int_
-        }
-    else:
-        return None
-
 # Function to format the player's name as "LASTNAME, F."
-def format_player_name(name):
-    name_parts = name.split()
-    if len(name_parts) < 2:
-        # If no last name is provided, return the full name in uppercase
-        return name.upper()
-
-    first_name = name_parts[0]
-    last_name = name_parts[-1]  # Handles middle names too
-    formatted_name = f"{last_name.upper()}, {first_name[0].upper()}."
+def format_player_name(full_name):
+    name_parts = full_name.split()
+    if len(name_parts) >= 2:
+        last_name = name_parts[-1].upper()
+        first_initial = name_parts[0][0].upper() + "."
+        formatted_name = f"{last_name}, {first_initial}"
+    else:
+        formatted_name = full_name.upper()  # In case the name is just one word
     return formatted_name
 
-# Function to write the player's passing stats to an output XML file
-def write_output_xml(formatted_name, stats, output_file):
+# Function to write the player's stats to the output XML file
+def write_output_xml(player_name, stats, output_file):
+    formatted_name = format_player_name(player_name)  # Format the player's name as "LASTNAME, F."
+    
     root = etree.Element("playerStats")
     player_element = etree.SubElement(root, "player", name=formatted_name)
     
-    pass_stats = etree.SubElement(player_element, "passStats")
+    # Add passStats as a child of the player element
+    pass_stats_element = etree.SubElement(player_element, "passStats")
     
-    etree.SubElement(pass_stats, "attempts").text = stats['attempts']
-    etree.SubElement(pass_stats, "completions").text = stats['completions']
-    etree.SubElement(pass_stats, "yards").text = stats['yards']
-    etree.SubElement(pass_stats, "touchdowns").text = stats['touchdowns']
-    etree.SubElement(pass_stats, "interceptions").text = stats['interceptions']
-    
+    # Write each stat to the passStats element
+    etree.SubElement(pass_stats_element, "attempts").text = stats.get('att', '0')
+    etree.SubElement(pass_stats_element, "completions").text = stats.get('comp', '0')
+    etree.SubElement(pass_stats_element, "yards").text = stats.get('yds', '0')
+    etree.SubElement(pass_stats_element, "touchdowns").text = stats.get('td', '0')
+    etree.SubElement(pass_stats_element, "interceptions").text = stats.get('int', '0')
+
     tree = etree.ElementTree(root)
-    tree.write(output_file, pretty_print=True, xml_declaration=True, encoding="UTF-8")
-    print(f"{CYAN}Output written to {output_file}{RESET}")
+    with open(output_file, "wb") as f:
+        tree.write(f, pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
-# Function to allow the user to select a valid team
-def select_team(tree):
-    teams = list_teams(tree)
-    while True:
-        team_input = input(f"{CYAN}Enter the team name (or part of it) to select the team: {RESET}").lower()
+# Function to extract the player's stats from the XML
+def get_player_stats(player_element):
+    stats = {}
+    pass_element = player_element.find(".//pass")  # Find pass stats under the player
+    if pass_element is not None:
+        stats['att'] = pass_element.attrib.get('att', '0')
+        stats['comp'] = pass_element.attrib.get('comp', '0')
+        stats['yds'] = pass_element.attrib.get('yds', '0')
+        stats['td'] = pass_element.attrib.get('td', '0')
+        stats['int'] = pass_element.attrib.get('int', '0')
+    return stats
 
-        selected_team = None
-        for team_name, team_element in teams.items():
-            if team_input in team_name:
-                selected_team = team_element
-                break
+# Function to display stats in the console
+def display_stats(player_name, stats):
+    formatted_name = format_player_name(player_name)  # Format the player's name
+    print(f"  {CYAN}Attempts: {WHITE}{stats.get('att', '0')}{RESET}")
+    print(f"  {CYAN}Completions: {WHITE}{stats.get('comp', '0')}{RESET}")
+    print(f"  {CYAN}Yards: {WHITE}{stats.get('yds', '0')}{RESET}")
+    print(f"  {CYAN}Touchdowns: {WHITE}{stats.get('td', '0')}{RESET}")
+    print(f"  {CYAN}Interceptions: {WHITE}{stats.get('int', '0')}{RESET}")
 
-        if selected_team:
-            return selected_team
-        else:
-            print(f"{YELLOW}Invalid team name. Please try again.{RESET}")
 
-# Function to allow the user to select a valid player
-def select_player(selected_team):
-    players = list_players_by_team(selected_team)
-    while True:
-        player_input = input("Enter the player's uniform number or name to select them: ")
+# Main function to run the program
+def main():
+    print(f"{CYAN}Coyote Sports Network - PrestoStats Football XML Parser for NewTek/Vizrt LiveText")
+    print(f"{CYAN}Version: {WHITE}0.7.2")
+    print(f"{CYAN}Written by: {WHITE}Trae Toelle")
+    try:
+        input_source = input(f"{CYAN}Enter the input XML file path or URL: {RESET}")
+        output_file = input(f"{CYAN}Enter the output XML file path (default: output.xml): {RESET}") or "output.xml"
 
+        # Load the XML initially to allow the user to select the team and player
+        tree = load_xml(input_source)
+        if tree is None:
+            print(f"{YELLOW}Failed to load the XML file.{RESET}")
+            return
+
+        # Allow the user to select a team and a player
+        selected_team_name, selected_team = select_team(tree)
+        players = list_players_by_team(selected_team_name, selected_team)
+        
+        # Prompt the user to select a player by uniform number or name
+        player_input = input(f"{CYAN}Enter the player's uniform number or name to select them: {RESET}").lower()
         selected_player = None
         for key, player_element in players.items():
-            if player_input.lower() in key.lower():
+            if player_input in key.lower():
                 selected_player = player_element
                 break
 
-        # Explicitly check if selected_player is not None
         if selected_player is not None:
-            return selected_player
-        else:
-            print("Invalid player selection. Please try again.")
+            player_name = selected_player.attrib.get('name')
+            formatted_name = format_player_name(player_name)
+            print(f"Selected player: {player_name}")
 
+            # Query the player's stats every 5 seconds and output to XML
+            while True:
+                # Inform the user that the program is querying the stats
+                print(f"\n{CYAN}Querying passing stats for {WHITE}{formatted_name}...{RESET}")
+                print(f"{YELLOW}Press Ctrl+C to stop{RESET}")
+                # Refresh the XML to get updated stats
+                tree = load_xml(input_source)
+                # Retrieve the updated player stats
+                updated_player_element = tree.xpath(f"//player[@name='{player_name}']")[0]
+                stats = get_player_stats(updated_player_element)
+                
+                # Display the stats in the console
+                display_stats(player_name, stats)
 
-# Main function to run the program in a loop every 5 seconds
-def main():
-    print(f"{CYAN}Coyote Sports Network - PrestoStats Football XML parser for NewTek/Vizrt LiveText{RESET}")
-    print(f"{CYAN}Version 0.6.1{RESET}")
-    print(f"{CYAN}Written by: Trae Toelle{RESET}")
-    print("\n")
-    input_source = input(f"{CYAN}Enter the input XML file path or URL: {RESET}")
-    output_file = input(f"{CYAN}Enter the output XML file path (default: output.xml): {RESET}") or "output.xml"
-
-    # Load the XML
-    tree = load_xml(input_source)
-    if tree is None:
-        print(f"{YELLOW}Failed to load the XML file.{RESET}")
-        return
-
-    # Allow the user to select a team and a player
-    selected_team = select_team(tree)
-    selected_player = select_player(selected_team)
-
-    player_name = selected_player.attrib['name']
-    formatted_name = format_player_name(player_name)
-
-    # Loop to query the XML every 5 seconds and write the output to an XML file
-    try:
-        while True:
-            print(f"\n{CYAN}Querying passing stats for {WHITE}{formatted_name}{RESET}...")
-            print(f"{YELLOW}Press Ctrl+C to stop{RESET}")
-
-            # Reload the XML to get updated stats
-            tree = load_xml(input_source)
-            if tree is None:
-                print(f"{YELLOW}Failed to reload the XML. Retrying in 5 seconds...{RESET}")
+                # Write stats to the output file
+                write_output_xml(player_name, stats, output_file)
+                print(f"\n{CYAN}Output written to {output_file}.{RESET}")
+                
+                # Wait 5 seconds before re-querying
                 time.sleep(5)
-                continue
-
-            # Get the player's passing stats
-            stats = get_passing_stats(selected_player)
-            if stats:
-                print(f"  {CYAN}Attempts: {WHITE}{stats['attempts']}{RESET}")
-                print(f"  {CYAN}Completions: {WHITE}{stats['completions']}{RESET}")
-                print(f"  {CYAN}Yards: {WHITE}{stats['yards']}{RESET}")
-                print(f"  {CYAN}Touchdowns: {WHITE}{stats['touchdowns']}{RESET}")
-                print(f"  {CYAN}Interceptions: {WHITE}{stats['interceptions']}{RESET}")
-
-                # Write the stats to an XML file
-                write_output_xml(formatted_name, stats, output_file)
-            else:
-                print(f"{YELLOW}No passing stats available for {formatted_name}.{RESET}")
-
-            # Wait for 5 seconds before querying again
-            time.sleep(5)
+        else:
+            print(f"{YELLOW}No matching player found.{RESET}")
+    
     except KeyboardInterrupt:
-        print(f"\n{YELLOW}Program stopped.{RESET}")
+        print(f"\n{YELLOW}Program interrupted by user. Exiting...{RESET}")
 
 if __name__ == "__main__":
     main()
