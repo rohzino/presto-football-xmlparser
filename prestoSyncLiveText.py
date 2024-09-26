@@ -54,7 +54,7 @@ def select_team(tree):
         vh = team.attrib.get('vh').upper()  # Capitalize the abbreviation
         if team_name:  # Only add teams with a valid name
             team_key = f"{team_name} ({vh})"  # Capitalize each word in team_name and abbreviation
-            print(f"- {CYAN}{team_key}{RESET}")
+            print(f"  {WHITE}{team_key}{RESET}")
             team_dict[(team_name.lower(), vh)] = team
     
     while True:
@@ -148,10 +148,10 @@ def display_stats(player_name, stats):
 
 # Main function to run the program
 def main():
-    print(f"{CYAN}Coyote Sports Network - PrestoStats Football XML Parser for NewTek/Vizrt LiveText")
-    print(f"{CYAN}Version: {WHITE}0.7.2")
-    print(f"{CYAN}Written by: {WHITE}Trae Toelle")
     try:
+        print(f"{CYAN}Coyote Sports Network - PrestoStats Football XML Parser for NewTek/Vizrt LiveText")
+        print(f"{CYAN}Version: {WHITE}0.7.3")
+        print(f"{CYAN}Written by: {WHITE}Trae Toelle")
         input_source = input(f"{CYAN}Enter the input XML file path or URL: {RESET}")
         output_file = input(f"{CYAN}Enter the output XML file path (default: output.xml): {RESET}") or "output.xml"
 
@@ -161,45 +161,61 @@ def main():
             print(f"{YELLOW}Failed to load the XML file.{RESET}")
             return
 
-        # Allow the user to select a team and a player
-        selected_team_name, selected_team = select_team(tree)
-        players = list_players_by_team(selected_team_name, selected_team)
-        
-        # Prompt the user to select a player by uniform number or name
-        player_input = input(f"{CYAN}Enter the player's uniform number or name to select them: {RESET}").lower()
-        selected_player = None
-        for key, player_element in players.items():
-            if player_input in key.lower():
-                selected_player = player_element
-                break
+        while True:
+            # Allow the user to select a team and a player
+            selected_team_name, selected_team = select_team(tree)
+            players = list_players_by_team(selected_team_name, selected_team)
+            
+            # Prompt the user to select a player by uniform number or name
+            player_input = input(f"{CYAN}Enter the player's uniform number or name to select them: {RESET}").lower()
+            selected_player = None
+            for key, player_element in players.items():
+                if player_input in key.lower():
+                    selected_player = player_element
+                    break
 
-        if selected_player is not None:
-            player_name = selected_player.attrib.get('name')
-            formatted_name = format_player_name(player_name)
-            print(f"Selected player: {player_name}")
+            if selected_player is not None:
+                player_name = selected_player.attrib.get('name')
+                formatted_name = format_player_name(player_name)
+                print(f"Selected player: {formatted_name}")
 
-            # Query the player's stats every 5 seconds and output to XML
-            while True:
-                # Inform the user that the program is querying the stats
-                print(f"\n{CYAN}Querying passing stats for {WHITE}{formatted_name}...{RESET}")
-                print(f"{YELLOW}Press Ctrl+C to stop{RESET}")
-                # Refresh the XML to get updated stats
-                tree = load_xml(input_source)
-                # Retrieve the updated player stats
-                updated_player_element = tree.xpath(f"//player[@name='{player_name}']")[0]
-                stats = get_player_stats(updated_player_element)
-                
-                # Display the stats in the console
-                display_stats(player_name, stats)
+                # Query the player's stats every 5 seconds and output to XML
+                while True:
+                    try:
+                        # Inform the user that the program is querying the stats
+                        print(f"\n{CYAN}Querying passing stats for {WHITE}{formatted_name}...{RESET}")
+                        print(f"{YELLOW}Press Ctrl+C to change player/team or exit{RESET}")
+                        
+                        # Refresh the XML to get updated stats
+                        tree = load_xml(input_source)
+                        # Retrieve the updated player stats
+                        updated_player_element = tree.xpath(f"//player[@name='{player_name}']")[0]
+                        stats = get_player_stats(updated_player_element)
+                        
+                        # Display the stats in the console
+                        display_stats(player_name, stats)
 
-                # Write stats to the output file
-                write_output_xml(player_name, stats, output_file)
-                print(f"\n{CYAN}Output written to {output_file}.{RESET}")
-                
-                # Wait 5 seconds before re-querying
-                time.sleep(5)
-        else:
-            print(f"{YELLOW}No matching player found.{RESET}")
+                        # Write stats to the output file
+                        write_output_xml(player_name, stats, output_file)
+                        print(f"\n{CYAN}Output written to {WHITE}{output_file}.{RESET}")
+                        
+                        
+                        # Wait 5 seconds before re-querying
+                        time.sleep(5)
+                    
+                    except KeyboardInterrupt:
+                        print(f"\n{YELLOW}Querying stopped. Do you want to:{RESET}")
+                        print(f"{CYAN}1. Switch team and player{RESET}")
+                        print(f"{CYAN}2. Exit{RESET}")
+                        choice = input(f"{CYAN}Enter your choice: {RESET}")
+
+                        if choice == '1':
+                            break  # Break out of the loop, allows user to select a new team/player
+                        elif choice == '2':
+                            print(f"{YELLOW}Exiting...{RESET}")
+                            return
+            else:
+                print(f"{YELLOW}No matching player found.{RESET}")
     
     except KeyboardInterrupt:
         print(f"\n{YELLOW}Program interrupted by user. Exiting...{RESET}")
