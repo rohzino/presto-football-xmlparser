@@ -150,7 +150,7 @@ def display_stats(player_name, stats):
 def main():
     try:
         print(f"{CYAN}Coyote Sports Network - PrestoStats Football XML Parser for NewTek/Vizrt LiveText")
-        print(f"{CYAN}Version: {WHITE}0.7.3")
+        print(f"{CYAN}Version: {WHITE}0.7.5")
         print(f"{CYAN}Written by: {WHITE}Trae Toelle")
         input_source = input(f"{CYAN}Enter the input XML file path or URL: {RESET}")
         output_file = input(f"{CYAN}Enter the output XML file path (default: output.xml): {RESET}") or "output.xml"
@@ -177,7 +177,7 @@ def main():
             if selected_player is not None:
                 player_name = selected_player.attrib.get('name')
                 formatted_name = format_player_name(player_name)
-                print(f"Selected player: {formatted_name}")
+                print(f"Selected player: {player_name}")
 
                 # Query the player's stats every 5 seconds and output to XML
                 while True:
@@ -188,8 +188,19 @@ def main():
                         
                         # Refresh the XML to get updated stats
                         tree = load_xml(input_source)
+                        if tree is None:
+                            print(f"{YELLOW}Failed to reload the XML. Retrying in 1 second{RESET}")
+                            time.sleep(1)
+                            continue  # Retry loading the XML
+
                         # Retrieve the updated player stats
-                        updated_player_element = tree.xpath(f"//player[@name='{player_name}']")[0]
+                        updated_player_element = tree.xpath(f"//player[@name='{player_name}']")
+                        if not updated_player_element:
+                            print(f"{YELLOW}Could not find player {player_name} in the updated XML. Retrying...{RESET}")
+                            time.sleep(1)
+                            continue  # Retry loading player stats
+
+                        updated_player_element = updated_player_element[0]
                         stats = get_player_stats(updated_player_element)
                         
                         # Display the stats in the console
@@ -199,18 +210,17 @@ def main():
                         write_output_xml(player_name, stats, output_file)
                         print(f"\n{CYAN}Output written to {WHITE}{output_file}.{RESET}")
                         
-                        
                         # Wait 5 seconds before re-querying
-                        time.sleep(5)
-                    
+                        time.sleep(2)
+
                     except KeyboardInterrupt:
                         print(f"\n{YELLOW}Querying stopped. Do you want to:{RESET}")
-                        print(f"{CYAN}1. Switch team and player{RESET}")
+                        print(f"{CYAN}1. Switch player/team{RESET}")
                         print(f"{CYAN}2. Exit{RESET}")
                         choice = input(f"{CYAN}Enter your choice: {RESET}")
 
                         if choice == '1':
-                            break  # Break out of the loop, allows user to select a new team/player
+                            break  # Break out of the player querying loop and reselect a player
                         elif choice == '2':
                             print(f"{YELLOW}Exiting...{RESET}")
                             return
@@ -219,6 +229,7 @@ def main():
     
     except KeyboardInterrupt:
         print(f"\n{YELLOW}Program interrupted by user. Exiting...{RESET}")
+
 
 if __name__ == "__main__":
     main()
